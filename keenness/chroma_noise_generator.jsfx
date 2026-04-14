@@ -1,0 +1,165 @@
+desc:Chroma Noise Generator
+desc:Chroma Noise Generator [Keenness]
+//tags: generator synthesis utility
+//author: Keenness
+
+/*
+  This JSFX is a versatile noise generator providing spectrally accurate White,
+  Pink, Orange, and Brown noise with DC offset blocking and auto-mute.
+  Each profile is calibrated to maintain a flat frequency response relative to
+  its target slope: 0, 3, 4.5, and 6 dB/oct.
+
+  © 2026 Keenness <keenness@pm.me> - MIT License
+*/
+
+slider1:-6<-60,0,0.1>Volume (dB)
+slider2:2<0,3,1{White (0 dB/oct),Pink (3 dB/oct),Orange (4.5 dB/oct),Brown (6 dB/oct)}>Noise Color
+slider3:0<0,1,1{Off,On}>Activate when playing
+
+in_pin:none
+out_pin:left output
+out_pin:right output
+
+@init
+// =============================================================================
+// --- UTILITIES ---
+// =============================================================================
+function hz_to_pole(hz) ( exp(-2 * $pi * (hz / srate)); );
+function db_to_gain(db) ( 10 ^ (db / 20); );
+
+// --- BIQUAD FILTER (Adapted for High-Shelf Compensator) ---
+function init_brown_compensator(freq, db, q)
+instance(b0, b1, b2, a1, a2)
+local(A, w0, cosW, sinW, alpha, sqrtA2, a0_inv)
+(
+  A  = 10 ^ (db / 40.0);
+  w0 = 2 * $pi * freq / srate;
+  cosW = cos(w0);
+  sinW = sin(w0);
+  alpha = sinW / (2 * q);
+  sqrtA2 = 2 * sqrt(A) * alpha;
+
+  // Calculate coefficients and normalize by a0 immediately
+  a0_inv = 1.0 / ((A+1) - (A-1)*cosW + sqrtA2);
+  
+  b0 = (A * ( (A+1) + (A-1)*cosW + sqrtA2 )) * a0_inv;
+  b1 = (-2*A * ( (A-1) + (A+1)*cosW )) * a0_inv;
+  b2 = (A * ( (A+1) + (A-1)*cosW - sqrtA2 )) * a0_inv;
+  a1 = (2 * ( (A-1) - (A+1)*cosW )) * a0_inv;
+  a2 = ((A+1) - (A-1)*cosW - sqrtA2) * a0_inv;
+);
+
+function process_biquad(x)
+instance(b0, b1, b2, a1, a2, x1, x2, y1, y2)
+local(y)
+(
+  y = b0*x + b1*x1 + b2*x2 - a1*y1 - a2*y2;
+  x2 = x1; x1 = x;
+  y2 = y1; y1 = y;
+  y;
+);
+
+// --- DC BLOCKER FILTER ---
+function process_dcblock(x)
+instance(last_in, last_out)
+local(y)
+(
+  y = x - last_in + 0.999 * last_out;
+  last_in = x;
+  last_out = y;
+  y;
+);
+
+// =============================================================================
+// --- FILTER COEFFICIENTS SETUP ---
+// =============================================================================
+
+// 1. PINK NOISE (3 dB/oct)
+pink_p0 = hz_to_pole(30);    pink_g0 = db_to_gain(-21);
+pink_p1 = hz_to_pole(200);   pink_g1 = db_to_gain(-17);
+pink_p2 = hz_to_pole(1000);  pink_g2 = db_to_gain(-12);
+pink_p3 = hz_to_pole(3500);  pink_g3 = db_to_gain(-9);
+pink_p4 = hz_to_pole(10000); pink_g4 = db_to_gain(-6);
+pink_p5 = -0.7616;           pink_g5 = -0.1;
+pink_g_white = db_to_gain(-20);
+
+// 2. ORANGE NOISE (4.5 dB/oct)
+orange_p0 = hz_to_pole(30);    orange_g0 = db_to_gain(-20);
+orange_p1 = hz_to_pole(200);   orange_g1 = db_to_gain(-25);
+orange_p2 = hz_to_pole(1000);  orange_g2 = db_to_gain(-22);
+orange_p3 = hz_to_pole(5000);  orange_g3 = db_to_gain(-21);
+orange_p4 = hz_to_pole(20000); orange_g4 = db_to_gain(-40);
+orange_p5 = -0.65;             orange_g5 = -0.05;
+
+// 3. BROWN NOISE (6 dB/oct)
+brown_p0 = hz_to_pole(20);
+brown_g0 = db_to_gain(-23);
+
+// High-Shelf for Brown Noise (L/R)
+comp_L.init_brown_compensator(22050, -6.0, 0.2);
+comp_R.init_brown_compensator(22050, -6.0, 0.2);
+
+@slider
+// Calculate Master Gain based on Slider Volume and Color Compensation
+vol_linear = db_to_gain(slider1);
+
+slider2 == 0 ? color_gain = 0.12 :     
+slider2 == 1 ? color_gain = 0.07 :     
+slider2 == 2 ? color_gain = 0.18 :     
+slider2 == 3 ? color_gain = 0.38;
+
+master_gain = vol_linear * color_gain;
+
+@sample
+// Generate base random values (-1.0 to 1.0)
+wL = rand(2) - 1.0;
+wR = rand(2) - 1.0;
+
+// --- GENERATE NOISE BY COLOR ---
+slider2 == 0 ?
+(
+  // 0. WHITE NOISE
+  outL = wL; 
+  outR = wR;
+) : 
+slider2 == 1 ?
+(
+  // 1. PINK NOISE
+  pL0 = pink_p0*pL0 + wL*pink_g0; pL1 = pink_p1*pL1 + wL*pink_g1; pL2 = pink_p2*pL2 + wL*pink_g2;
+  pL3 = pink_p3*pL3 + wL*pink_g3; pL4 = pink_p4*pL4 + wL*pink_g4; pL5 = pink_p5*pL5 + wL*pink_g5;
+  outL = pL0 + pL1 + pL2 + pL3 + pL4 + pL5 + wL*pink_g_white;
+  
+  pR0 = pink_p0*pR0 + wR*pink_g0; pR1 = pink_p1*pR1 + wR*pink_g1; pR2 = pink_p2*pR2 + wR*pink_g2;
+  pR3 = pink_p3*pR3 + wR*pink_g3; pR4 = pink_p4*pR4 + wR*pink_g4; pR5 = pink_p5*pR5 + wR*pink_g5;
+  outR = pR0 + pR1 + pR2 + pR3 + pR4 + pR5 + wR*pink_g_white;
+) : 
+slider2 == 2 ? (
+  // 2. ORANGE NOISE
+  oL0 = orange_p0*oL0 + wL*orange_g0; oL1 = orange_p1*oL1 + wL*orange_g1; oL2 = orange_p2*oL2 + wL*orange_g2;
+  oL3 = orange_p3*oL3 + wL*orange_g3; oL4 = orange_p4*oL4 + wL*orange_g4; oL5 = orange_p5*oL5 + wL*orange_g5;
+  outL = oL0 + oL1 + oL2 + oL3 + oL4 + oL5;
+  
+  oR0 = orange_p0*oR0 + wR*orange_g0; oR1 = orange_p1*oR1 + wR*orange_g1; oR2 = orange_p2*oR2 + wR*orange_g2;
+  oR3 = orange_p3*oR3 + wR*orange_g3; oR4 = orange_p4*oR4 + wR*orange_g4; oR5 = orange_p5*oR5 + wR*orange_g5;
+  outR = oR0 + oR1 + oR2 + oR3 + oR4 + oR5;
+) : (
+  // 3. BROWN NOISE
+  bL0 = brown_p0*bL0 + wL*brown_g0;
+  bR0 = brown_p0*bR0 + wR*brown_g0;
+  
+  // Apply High Shelf to tame highs
+  outL = comp_L.process_biquad(bL0);
+  outR = comp_R.process_biquad(bR0);
+);
+
+// --- POST-PROCESSING ---
+// Apply DC Blocker and Master Volume Gain
+raw_spl0 = dc_L.process_dcblock(outL) * master_gain;
+raw_spl1 = dc_R.process_dcblock(outR) * master_gain;
+
+// Check if we should mute based on slider3 and DAW play state
+// (play_state & 1) is true when the DAW is playing or recording
+mute_output = (slider3 == 1 && !(play_state & 1));
+
+spl0 = mute_output ? 0 : raw_spl0;
+spl1 = mute_output ? 0 : raw_spl1;
