@@ -11,9 +11,7 @@ A versatile noise generator providing spectrally accurate noise profiles calibra
 
 **Demo:**
 
-<video width="640" height="360" controls>
-  <source src="./Assets/chroma_noise_generator_(demo).mp4" type="video/mp4">
-</video>
+<https://github.com/user-attachments/assets/ca527f74-3943-483b-9ac3-98bba97e0933>
 
 **Noise Colors:**
 
@@ -38,15 +36,11 @@ Inspired by Audacity's native studio fade, this script creates an analogue-sound
 
 **Demo 1 (15s fade-out):**
 
-<video width="640" height="360" controls>
-  <source src="./Assets/natural_studio_fade_in_out_(demo1).mp4" type="video/mp4">
-</video>
+<https://github.com/user-attachments/assets/f7fdd913-bd7f-44cb-aa6b-8aa63daad962>
 
 **Demo 2 (comparison with iZotope RX and Audacity Studio fade-out):**
 
-<video width="640" height="360" controls>
-  <source src="./Assets/natural_studio_fade_in_out_(demo2).mp4" type="video/mp4">
-</video>
+<https://github.com/user-attachments/assets/6369b299-64f2-4adb-a3e0-cf56e1a66cd9>
 
 **How it works:**
 
